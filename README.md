@@ -9,6 +9,7 @@ Este proyecto simula la base de datos para un centro de formación académica, i
 *   **Historial de Cambios Inteligente:** Guarda un registro de cada inserción, modificación o borrado de datos convirtiendo las filas a formato **JSONB** para que sea fácil consultar el antes y el después.
 *   **Rastreo de Usuarios Real:** Captura el nombre del usuario real que hace los cambios a través de variables de sesión, diferenciándolo de la cuenta técnica que usa la aplicación para conectarse.
 *   **Alertas Instantáneas:** Envía avisos de forma inmediata ante incidencias críticas usando los canales nativos `LISTEN` y `NOTIFY` de PostgreSQL.
+*   **Estrategia de Calidad y Pruebas (Database QA):** Cuenta con una suite avanzada de pruebas unitarias encargada de validar la robustez del motor frente a datos corruptos, desbordamientos financieros y violaciones concurrentes de lógica de negocio (Edge Cases).
 
 ---
 
@@ -31,7 +32,7 @@ DB-Sentinel/
     │
     ├── 📁 02_logica_y_triggers/
     │   ├── 📄 02_funciones_utilidad.sql
-    │   ├── 📄 03_triggers_basicos.sql
+    │   ├── 📄 03_automatizacion_y_triggers.sql
     │   ├── 📄 04_triggers_negocio.sql
     │   └── 📄 08_notify.sql
     │
@@ -40,9 +41,22 @@ DB-Sentinel/
     │   └── 📄 07_reporting.sql
     │
     └── 📁 04_pruebas_y_analisis/
-        ├── 📄 09_datos_prueba.sql
-        └── 📄 10_consultas_auditoria.sql
+        ├── 📄 09_datos_prueba.sql          # Carga masiva de datos semilla para el entorno
+        ├── 📄 10_consultas_auditoria.sql   # Diagnóstico del catálogo y logs delta JSONB
+        └── 📄 11_pruebas_unitarias_y_estres.sql # Suite interactiva de QA y stress testing de triggers
 ```
+
+---
+
+## 🧪 Cobertura del Banco de Pruebas (Script 11)
+
+El archivo `11_pruebas_unitarias_y_estres.sql` actúa como el entorno de aseguramiento de calidad del motor de base de datos. Está diseñado específicamente para verificar los límites del sistema mediante la simulación de escenarios críticos:
+
+1.  **Saneamiento de Datos (Data Sanitization):** Comprobación del formateo automático en minúsculas y eliminación de espacios en strings mediante triggers `BEFORE INSERT`.
+2.  **Validación de Restricciones Cronológicas:** Simulación deliberada de errores insertando cursos con fechas invertidas o estados futuros incompatibles para forzar excepciones controladas por el motor.
+3.  **Saturación Física de Recursos (Race Conditions):** Pruebas de bloqueo de inscripciones inyectando alumnos adicionales sobre un curso con cupo estrictamente lleno para evaluar el trigger de aforo.
+4.  **Integridad Financiera (Overpayment Prevention):** Intento de inyección de abonos masivos exagerados que superan los saldos deudores reales de las matrículas para certificar que el motor deniegue transacciones inconsistentes.
+5.  **Trazabilidad del Contexto de Sesión:** Simulación de variables de entorno de la aplicación (`set_config`) para validar el correcto aislamiento diferencial de datos de auditoría históricos en formato JSONB.
 
 ---
 
@@ -60,7 +74,7 @@ Sigue ese mismo comando para el resto de los archivos respetando estrictamente e
 
 1. `database/01_esquemas_y_tablas/01_esquema.sql`
 2. `database/02_logica_y_triggers/02_funciones_utilidad.sql`
-3. `database/02_logica_y_triggers/03_triggers_basicos.sql`
+3. `database/02_logica_y_triggers/03_automatizacion_y_triggers.sql`
 4. `database/02_logica_y_triggers/04_triggers_negocio.sql`
 5. `database/01_esquemas_y_tablas/05_auditoria.sql`
 6. `database/03_componentes_avanzados/06_procedimientos.sql`
@@ -68,6 +82,7 @@ Sigue ese mismo comando para el resto de los archivos respetando estrictamente e
 8. `database/02_logica_y_triggers/08_notify.sql`
 9. `database/04_pruebas_y_analisis/09_datos_prueba.sql`
 10. `database/04_pruebas_y_analisis/10_consultas_auditoria.sql`
+11. `database/04_pruebas_y_analisis/11_pruebas_unitarias_y_estres.sql`
 
 ---
 
