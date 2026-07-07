@@ -169,3 +169,66 @@ CREATE TRIGGER auditar_tareas
     AFTER INSERT OR UPDATE OR DELETE ON app.tareas_pendientes
     FOR EACH ROW
     EXECUTE FUNCTION audit.trg_auditar_cambios('tarea_id');
+
+/*******************************************************************************
+ * Auditar cambios de estado de matrícula
+ * Tipo: Tabla de auditoría + función de trigger + trigger
+ * Objetivo: Registrar en una tabla de auditoría los cambios de estado de una matrícula.
+ * Crear la tabla audit.ej_cambios_estado_matricula, la función 
+ *            app.ej_trg_auditar_estado_matricula() y el trigger ej_auditar_estado_matricula. 
+ *            Debe guardar un registro solo cuando OLD.estado sea distinto de NEW.estado.
+ * Requisitos mínimos: 
+ *  • La tabla de auditoría debe guardar: matricula_id, estado_anterior, 
+ *    estado_nuevo, usuario_bd y cambiado_en. 
+ *  • El trigger debe ser AFTER UPDATE OF estado ON app.matriculas. 
+ *  • Debe usar IS DISTINCT FROM para comparar estados. 
+ *  • Debe devolver NEW.
+ *******************************************************************************/
+
+-- PASO 1: Crear la tabla de auditoría en el esquema 'audit'
+CREATE TABLE IF NOT EXISTS audit.ej_cambios_estado_matricula (
+    auditoria_id BIGSERIAL PRIMARY KEY,
+    matricula_id BIGINT NOT NULL,
+    estado_anterior VARCHAR,
+    estado_nuevo VARCHAR,
+    usuario_bd VARCHAR NOT NULL,
+    cambiado_en TIMESTAMP NOT NULL
+);
+
+-- PASO 2: Crear la función del trigger
+CREATE OR REPLACE FUNCTION app.ej_trg_auditar_estado_matricula()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Verificamos de manera segura si el estado anterior es distinto del nuevo
+    IF OLD.estado IS DISTINCT FROM NEW.estado THEN
+        -- Insertamos el registro histórico en la tabla de auditoría
+        -- USER o CURRENT_USER guarda automáticamente el nombre del usuario de la BD conectado
+        INSERT INTO audit.ej_cambios_estado_matricula (
+            matricula_id, 
+            estado_anterior, 
+            estado_nuevo, 
+            usuario_bd, 
+            cambiado_en
+        )
+        VALUES (
+            NEW.matricula_id, 
+            OLD.estado, 
+            NEW.estado, 
+            USER, 
+            NOW()
+        );
+    END IF;
+
+    -- Se exige explícitamente devolver NEW (aunque sea un trigger AFTER UPDATE)
+    RETURN NEW;
+END;
+$$;
+
+-- PASO 3: Crear el trigger asociado a la columna 'estado'
+CREATE OR REPLACE TRIGGER ej_auditar_estado_matricula
+AFTER UPDATE OF estado ON app.matriculas
+FOR EACH ROW
+EXECUTE FUNCTION app.ej_trg_auditar_estado_matricula();
+

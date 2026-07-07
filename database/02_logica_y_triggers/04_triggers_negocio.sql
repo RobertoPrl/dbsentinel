@@ -282,3 +282,149 @@ CREATE TRIGGER tarea_desde_incidencia
 AFTER INSERT ON app.incidencias
 FOR EACH ROW
 EXECUTE FUNCTION app.trg_tarea_desde_incidencia();
+
+
+/*********************************************************************************************************************************************************
+ * Crear tarea automática para incidencias urgentes
+ * Tipo: Función de trigger + trigger
+ * Objetivo: Insertar una tarea relacionada cuando se cree una incidencia importante.
+ * Crear la función app.ej_trg_tarea_incidencia_urgente() y el trigger 
+ *            ej_tarea_incidencia_urgente para que, al insertar una incidencia 
+ *            alta o crítica, se cree una tarea en app.tareas_pendientes.
+ * Requisitos mínimos: 
+ *  • El trigger debe ser AFTER INSERT ON app.incidencias. 
+ *  • Solo debe crear tarea si NEW.prioridad está en 'alta' o 'critica'. 
+ *  • La tarea debe tener origen = 'incidencia' y origen_id = NEW.incidencia_id. 
+ *  • Si es crítica, fecha_limite debe ser CURRENT_DATE; si es alta, CURRENT_DATE + 2.
+ *******************************************************************************/
+
+-- PASO 1: Crear la función del trigger
+CREATE OR REPLACE FUNCTION app.ej_trg_tarea_incidencia_urgente()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	v_fecha_limite DATE;
+BEGIN
+	-- Evaluamos la prioridad para calcular la fecha límite requerida
+	IF NEW.prioridad = 'critica' THEN
+		v_fecha_limite := CURRENT_DATE;
+	ELSIF NEW.prioridad = 'alta' THEN
+		v_fecha_limite := CURRENT_DATE + 2;
+	END IF;
+
+	-- Insertamos el registro secundario en la tabla app.tareas_pendientes
+	INSERT INTO app.tareas_pendientes (origen, origen_id, fecha_limite, descripcion)
+	VALUES (
+		'incidencia', 
+		NEW.incidencia_id, 
+		v_fecha_limite, 
+		'Revisar de forma prioritaria la incidencia nº ' || NEW.incidencia_id
+	);
+
+	-- En triggers de tipo AFTER, el valor de retorno no afecta a la fila guardada,
+	-- por lo que se recomienda retornar NULL de forma estándar.
+	RETURN NULL;
+END;
+$$;
+
+-- PASO 2: Crear el trigger condicional
+CREATE OR REPLACE TRIGGER ej_tarea_incidencia_urgente
+AFTER INSERT ON app.incidencias
+FOR EACH ROW
+-- Agregamos la cláusula WHEN para que el trigger solo se dispare en los casos solicitados
+WHEN (NEW.prioridad IN ('alta', 'critica'))
+EXECUTE FUNCTION app.ej_trg_tarea_incidencia_urgente();
+
+/*******************************************************************************
+ * Impedir pagos en matrículas anuladas o finalizadas
+ * Tipo: Función de trigger + trigger
+ * Objetivo: Validar una regla de negocio antes de registrar un pago.
+ * Crear la función app.ej_trg_validar_pago_matricula_activa() y el 
+ *            trigger ej_validar_pago_matricula_activa para impedir insertar 
+ *            pagos asociados a matrículas con estado anulada o finalizada.
+ * Requisitos mínimos: 
+ *  • La función debe consultar app.matriculas usando NEW.matricula_id. 
+ *  • Debe lanzar RAISE EXCEPTION si la matrícula está anulada o finalizada. 
+ *  • El trigger debe ser BEFORE INSERT ON app.pagos. 
+ *  • Debe devolver NEW si el pago es válido.
+ *******************************************************************************/
+
+-- PASO 1: Crear la función del trigger que realiza la validación
+CREATE OR REPLACE FUNCTION app.ej_trg_validar_pago_matricula_activa()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	v_estado_matricula VARCHAR;
+BEGIN
+	-- Consultamos el estado de la matrícula asociada al pago entrante
+	SELECT estado
+	INTO v_estado_matricula
+	FROM app.matriculas
+	WHERE matricula_id = NEW.matricula_id;
+
+	-- Verificamos si la matrícula se encuentra en uno de los estados prohibidos
+	IF v_estado_matricula IN ('anulada', 'finalizada') THEN
+		RAISE EXCEPTION 'Error: No se pueden registrar pagos en una matrícula con estado %', 
+			v_estado_matricula;
+	END IF;
+
+	-- Requisito mínimo: Debe devolver NEW si el pago es válido para proceder con el guardado
+	RETURN NEW;
+END;
+$$;
+
+-- PASO 2: Crear el trigger asociado a la tabla app.pagos
+CREATE OR REPLACE TRIGGER ej_validar_pago_matricula_activa
+BEFORE INSERT ON app.pagos
+FOR EACH ROW
+EXECUTE FUNCTION app.ej_trg_validar_pago_matricula_activa();
+
+/*******************************************************************************
+ * Crear asistencias automáticamente al crear una sesión
+ * Tipo: Función de trigger + trigger
+ * Objetivo: Generar registros relacionados después de crear una sesión de clase.
+ * Crear la función app.ej_trg_crear_asistencia_sesion() y el trigger 
+ *            ej_crear_asistencia_sesion para que, al insertar una sesión, 
+ *            se creen registros de asistencia en estado presente para las 
+ *            matrículas activas del curso.
+ * Requisitos mínimos: 
+ *  • El trigger debe ser AFTER INSERT ON app.sesiones. 
+ *  • Debe insertar en app.asistencia usando NEW.sesion_id. 
+ *  • Debe seleccionar matrículas de app.matriculas con el mismo curso_id y estado activa. 
+ *  • Debe usar ON CONFLICT DO NOTHING para evitar duplicados.
+ *******************************************************************************/
+
+-- PASO 1: Crear la función del trigger
+CREATE OR REPLACE FUNCTION app.ej_trg_crear_asistencia_sesion()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	-- Insertamos en la tabla app.asistencia todos los alumnos con matrícula activa
+	-- Usamos INSERT INTO ... SELECT para procesar todas las filas de una sola vez
+	INSERT INTO app.asistencia (sesion_id, matricula_id, estado)
+	SELECT 
+		NEW.sesion_id,     -- El ID de la sesión recién creada
+		m.matricula_id,    -- El ID de la matrícula del alumno
+		'presente'         -- Estado inicial exigido por el enunciado
+	FROM app.matriculas m
+	WHERE m.curso_id = NEW.curso_id -- Que pertenezcan al mismo curso de la sesión
+	  AND m.estado = 'activa'       -- Requisito mínimo: solo matrículas activas
+	
+	-- Requisito mínimo: Evita errores si por algún motivo ya existiera el registro
+	ON CONFLICT DO NOTHING; 
+
+	-- Al ser un trigger AFTER, retornamos NULL de forma estándar
+	RETURN NULL;
+END;
+$$;
+
+-- PASO 2: Crear el trigger asociado a la tabla app.sesiones
+CREATE OR REPLACE TRIGGER ej_crear_asistencia_sesion
+AFTER INSERT ON app.sesiones
+FOR EACH ROW
+EXECUTE FUNCTION app.ej_trg_crear_asistencia_sesion();
+
+
