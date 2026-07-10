@@ -22,30 +22,32 @@ DB-Sentinel/
 │
 ├── 📄 README.md                    # Presentación del proyecto y guía de instalación
 │
-└── 📁 database/
-    │
-    ├── 📄 00_crear_bd.sql           # Inicialización básica de la base de datos
-    │
-    ├── 📁 01_esquemas_y_tablas/
-    │   ├── 📄 01_esquema.sql       # Estructura de tablas de la aplicación
-    │   └── 📄 05_auditoria.sql     # Estructura de las tablas de auditoría
-    │
-    ├── 📁 02_logica_y_triggers/
-    │   ├── 📄 02_funciones_utilidad.sql
-    │   ├── 📄 03_automatizacion_y_triggers.sql
-    │   ├── 📄 04_triggers_negocio.sql
-    │   └── 📄 08_notify.sql
-    │
-    ├── 📁 03_componentes_avanzados/
-    │   ├── 📄 06_procedimientos.sql
-    │   └── 📄 07_reporting.sql
-    │
-    └── 📁 04_pruebas_y_analisis/
-        ├── 📄 09_datos_prueba.sql          # Carga masiva de datos semilla para el entorno
-        ├── 📄 10_consultas_auditoria.sql   # Diagnóstico del catálogo y logs delta JSONB
-        └── 📄 11_pruebas_unitarias_y_estres.sql # Suite interactiva de QA y stress testing de triggers
+├── 📁 database/
+│   │
+│   ├── 📄 00_crear_bd.sql           # Inicialización básica de la base de datos
+│   │
+│   ├── 📁 01_esquemas_y_tablas/
+│   │   ├── 📄 01_esquema.sql       # Estructura de tablas de la aplicación
+│   │   └── 📄 05_auditoria.sql     # Estructura de las tablas de auditoría
+│   │
+│   ├── 📁 02_logica_y_triggers/
+│   │   ├── 📄 02_funciones_utilidad.sql
+│   │   ├── 📄 03_automatizacion_y_triggers.sql
+│   │   ├── 📄 04_triggers_negocio.sql
+│   │   └── 📄 08_notify.sql
+│   │
+│   ├── 📁 03_componentes_avanzados/
+│   │   ├── 📄 06_procedimientos.sql
+│   │   └── 📄 07_reporting.sql
+│   │
+│   └── 📁 04_pruebas_y_analisis/
+│       ├── 📄 09_datos_prueba.sql          # Carga masiva de datos semilla para el entorno
+│       ├── 📄 10_consultas_auditoria.sql   # Diagnóstico del catálogo y logs delta JSONB
+│       └── 📄 11_pruebas_unitarias_y_estres.sql # Suite interactiva de QA y stress testing de triggers
+│
+└── 📁 05_automatizacion/
+    └── 📄 12_tarea_programada.ps1  # Script de PowerShell para la gestión de tareas desatendidas
 ```
-
 ---
 
 ## 🧪 Cobertura del Banco de Pruebas (Script 11)
@@ -57,6 +59,19 @@ El archivo `11_pruebas_unitarias_y_estres.sql` actúa como el entorno de asegura
 3.  **Saturación Física de Recursos (Race Conditions):** Pruebas de bloqueo de inscripciones inyectando alumnos adicionales sobre un curso con cupo estrictamente lleno para evaluar el trigger de aforo.
 4.  **Integridad Financiera (Overpayment Prevention):** Intento de inyección de abonos masivos exagerados que superan los saldos deudores reales de las matrículas para certificar que el motor deniegue transacciones inconsistentes.
 5.  **Trazabilidad del Contexto de Sesión:** Simulación de variables de entorno de la aplicación (`set_config`) para validar el correcto aislamiento diferencial de datos de auditoría históricos en formato JSONB.
+
+---
+
+---
+
+## 🤖 Automatización y Tareas Desatendidas (Script 12)
+
+El archivo `12_tarea_programada.ps1` introduce la capa de automatización externa del sistema, pensada para integrarse con herramientas como el Programador de Tareas de Windows (Windows Task Scheduler):
+
+1. **Gestión de Lotes Segura:** Invoca de manera desatendida el procedimiento almacenado `app.generar_tareas_pagos_pendientes()` para actualizar las obligaciones financieras.
+2. **Trazabilidad y Log Completo:** Registra tanto el resultado de la llamada inicial como el estado de las últimas 5 tareas generadas directamente en un archivo de texto histórico (`resultado_log.txt`).
+3. **Manejo de Errores Robusto:** Implementa bloques `Try-Catch` para atrapar fallas de conexión al motor de base de datos y notificarlas en el log.
+4. **Seguridad de Credenciales:** Inyecta la contraseña mediante variables de entorno dinámicas (`$env:PGPASSWORD`) y asegura su destrucción inmediata en el bloque `Finally` para evitar fugas de memoria en la sesión.
 
 ---
 
@@ -83,6 +98,7 @@ Sigue ese mismo comando para el resto de los archivos respetando estrictamente e
 9. `database/04_pruebas_y_analisis/09_datos_prueba.sql`
 10. `database/04_pruebas_y_analisis/10_consultas_auditoria.sql`
 11. `database/04_pruebas_y_analisis/11_pruebas_unitarias_y_estres.sql`
+12. `05_automatizacion/12_tarea_programada.ps1` *(Ejecutar mediante PowerShell para automatización externa)*
 
 ---
 
